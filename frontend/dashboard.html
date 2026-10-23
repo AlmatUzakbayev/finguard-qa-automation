@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dashboard · FinGuard</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header>
+  <span class="brand">FinGuard</span>
+  <nav>
+    <a href="/dashboard.html" data-testid="nav-dashboard" aria-current="page">Dashboard</a>
+    <a href="/accounts.html" data-testid="nav-accounts">Accounts</a>
+    <a href="/transfer.html" data-testid="nav-transfer">Transfer</a>
+    <a href="/history.html" data-testid="nav-history">History</a>
+  </nav>
+  <span data-testid="current-user"></span>
+  <button class="secondary" data-testid="logout-button">Sign out</button>
+</header>
+<main>
+  <div class="card">
+    <h1 data-testid="welcome">Welcome</h1>
+    <h2>Your accounts</h2>
+    <p class="muted" data-testid="no-accounts" hidden>You have no accounts yet. <a href="/accounts.html">Open one</a>.</p>
+    <table data-testid="accounts-table" hidden>
+      <thead><tr><th>Account</th><th>Currency</th><th class="money">Balance</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+  <p class="disclaimer">Training application for QA automation. Not a real bank — never enter real data.</p>
+</main>
+<script src="/app.js"></script>
+<script>
+  (async () => {
+    const user = await requireAuth();
+    document.querySelector("[data-testid=welcome]").textContent = `Welcome, ${user.full_name}`;
+    const accounts = await loadAccounts();
+    if (!accounts.length) {
+      document.querySelector("[data-testid=no-accounts]").hidden = false;
+      return;
+    }
+    const table = document.querySelector("[data-testid=accounts-table]");
+    renderAccountRows(table.querySelector("tbody"), accounts);
+    table.hidden = false;
+  })();
+</script>
+</body>
+</html>

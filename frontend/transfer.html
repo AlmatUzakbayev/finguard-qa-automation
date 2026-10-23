@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Transfer money · FinGuard</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header>
+  <span class="brand">FinGuard</span>
+  <nav>
+    <a href="/dashboard.html" data-testid="nav-dashboard">Dashboard</a>
+    <a href="/accounts.html" data-testid="nav-accounts">Accounts</a>
+    <a href="/transfer.html" data-testid="nav-transfer" aria-current="page">Transfer</a>
+    <a href="/history.html" data-testid="nav-history">History</a>
+  </nav>
+  <span data-testid="current-user"></span>
+  <button class="secondary" data-testid="logout-button">Sign out</button>
+</header>
+<main>
+  <div class="card">
+    <h1>Transfer money</h1>
+    <form data-testid="transfer-form" novalidate>
+      <label for="from">From account</label>
+      <select id="from" name="from" data-testid="from-account-select"></select>
+      <label for="to">To account number</label>
+      <input id="to" name="to" inputmode="numeric" placeholder="e.g. 42" data-testid="to-account-input">
+      <label for="amount">Amount</label>
+      <input id="amount" name="amount" inputmode="decimal" placeholder="0.00" data-testid="amount-input">
+      <label for="description">Description (optional)</label>
+      <input id="description" name="description" maxlength="140" data-testid="description-input">
+      <button type="submit" data-testid="transfer-button">Send money</button>
+    </form>
+    <div class="alert success" role="status" data-testid="transfer-success" hidden></div>
+    <div class="alert error" role="alert" data-testid="transfer-error" hidden></div>
+  </div>
+  <p class="disclaimer">Training application for QA automation. Not a real bank — never enter real data.</p>
+</main>
+<script src="/app.js"></script>
+<script>
+  const form = document.querySelector("[data-testid=transfer-form]");
+  const success = document.querySelector("[data-testid=transfer-success]");
+  const error = document.querySelector("[data-testid=transfer-error]");
+  const button = form.querySelector("button");
+  // One key per logical transfer: if the same submission is retried (double click,
+  // network retry), the server recognises it and does not charge twice.
+  let idempotencyKey = crypto.randomUUID();
+
+  async function refreshAccounts() {
+    const selected = form.from.value;
+    fillAccountSelect(form.from, await loadAccounts());
+    if (selected) form.from.value = selected;
+  }
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    hide(success);
+    hide(error);
+    const to = form.to.value.trim();
+    const amount = form.amount.value.trim();
+    if (!/^\d+$/.test(to)) return show(error, "Enter the destination account number.");
+    if (!amount) return show(error, "Enter an amount.");
+    button.disabled = true;
+    try {
+      const body = { from_account_id: Number(form.from.value), to_account_id: Number(to), amount };
+      const description = form.description.value.trim();
+      if (description) body.description = description;
+      const t = await api("/api/transfers", { method: "POST", body, headers: { "Idempotency-Key": idempotencyKey } });
+      idempotencyKey = crypto.randomUUID();
+      form.to.value = "";
+      form.amount.value = "";
+      form.description.value = "";
+      await refreshAccounts();
+      show(success, `Transfer #${t.id} completed: ${t.amount} sent to account #${t.to_account_id}.`);
+    } catch (err) {
+      show(error, errorMessage(err));
+    } finally {
+      button.disabled = false;
+    }
+  });
+
+  requireAuth().then(refreshAccounts);
+</script>
+</body>
+</html>

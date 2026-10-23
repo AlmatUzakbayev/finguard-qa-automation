@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Transaction history · FinGuard</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header>
+  <span class="brand">FinGuard</span>
+  <nav>
+    <a href="/dashboard.html" data-testid="nav-dashboard">Dashboard</a>
+    <a href="/accounts.html" data-testid="nav-accounts">Accounts</a>
+    <a href="/transfer.html" data-testid="nav-transfer">Transfer</a>
+    <a href="/history.html" data-testid="nav-history" aria-current="page">History</a>
+  </nav>
+  <span data-testid="current-user"></span>
+  <button class="secondary" data-testid="logout-button">Sign out</button>
+</header>
+<main>
+  <div class="card">
+    <h1>Transaction history</h1>
+    <label for="account">Account</label>
+    <select id="account" data-testid="history-account-select"></select>
+    <p class="muted" data-testid="history-empty" hidden>No transactions yet.</p>
+    <table data-testid="history-table" hidden>
+      <thead><tr><th>Date</th><th>Type</th><th>Counterparty</th><th>Description</th><th class="money">Amount</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+  <p class="disclaimer">Training application for QA automation. Not a real bank — never enter real data.</p>
+</main>
+<script src="/app.js"></script>
+<script>
+  const select = document.querySelector("[data-testid=history-account-select]");
+  const table = document.querySelector("[data-testid=history-table]");
+  const empty = document.querySelector("[data-testid=history-empty]");
+
+  function cell(text, testid, className) {
+    const td = document.createElement("td");
+    td.textContent = text; // textContent, not innerHTML: descriptions are user input
+    if (testid) td.dataset.testid = testid;
+    if (className) td.className = className;
+    return td;
+  }
+
+  async function render() {
+    const entries = await api(`/api/accounts/${select.value}/transactions`);
+    const tbody = table.querySelector("tbody");
+    tbody.innerHTML = "";
+    for (const e of entries) {
+      const row = document.createElement("tr");
+      row.dataset.testid = "history-row";
+      const sign = e.direction === "CREDIT" ? "+" : "-";
+      row.append(
+        cell(new Date(e.created_at).toLocaleString()),
+        cell(e.type, "type"),
+        cell(e.counterparty_account_id ? `#${e.counterparty_account_id}` : "—", "counterparty"),
+        cell(e.description || "", "description"),
+        cell(`${sign}${e.amount}`, "amount", `money ${e.direction.toLowerCase()}`),
+      );
+      tbody.appendChild(row);
+    }
+    table.hidden = entries.length === 0;
+    empty.hidden = entries.length !== 0;
+  }
+
+  (async () => {
+    await requireAuth();
+    const accounts = await loadAccounts();
+    if (!accounts.length) {
+      empty.textContent = "You have no accounts yet.";
+      empty.hidden = false;
+      return;
+    }
+    fillAccountSelect(select, accounts);
+    const wanted = new URLSearchParams(location.search).get("account");
+    if (wanted && accounts.some((a) => String(a.id) === wanted)) select.value = wanted;
+    select.addEventListener("change", render);
+    await render();
+  })();
+</script>
+</body>
+</html>

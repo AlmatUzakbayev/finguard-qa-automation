@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Register · FinGuard</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<main>
+  <div class="card narrow">
+    <h1>Create an account</h1>
+    <form data-testid="register-form" novalidate>
+      <label for="full_name">Full name</label>
+      <input id="full_name" name="full_name" data-testid="full-name-input">
+      <label for="email">Email</label>
+      <input id="email" name="email" type="email" data-testid="email-input">
+      <label for="password">Password (at least 8 characters)</label>
+      <input id="password" name="password" type="password" data-testid="password-input">
+      <button type="submit" data-testid="register-button">Register</button>
+    </form>
+    <div class="alert error" role="alert" data-testid="register-error" hidden></div>
+    <p class="muted">Already registered? <a href="/login.html">Sign in</a></p>
+  </div>
+</main>
+<script src="/app.js"></script>
+<script>
+  const form = document.querySelector("[data-testid=register-form]");
+  const error = document.querySelector("[data-testid=register-error]");
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    hide(error);
+    try {
+      await api("/api/auth/register", {
+        method: "POST",
+        body: { full_name: form.full_name.value.trim(), email: form.email.value.trim(), password: form.password.value },
+      });
+      location.assign("/login.html?registered=1");
+    } catch (err) {
+      show(error, err.code === "EMAIL_TAKEN" ? "This email is already registered." : errorMessage(err));
+    }
+  });
+</script>
+</body>
+</html>

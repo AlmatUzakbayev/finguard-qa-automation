@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign in · FinGuard</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<main>
+  <div class="card narrow">
+    <h1>Sign in to FinGuard</h1>
+    <div class="alert success" data-testid="login-info" hidden></div>
+    <form data-testid="login-form" novalidate>
+      <label for="email">Email</label>
+      <input id="email" name="email" type="email" autocomplete="username" data-testid="email-input">
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" data-testid="password-input">
+      <button type="submit" data-testid="login-button">Sign in</button>
+    </form>
+    <div class="alert error" role="alert" data-testid="login-error" hidden></div>
+    <p class="muted">No account yet? <a href="/register.html" data-testid="register-link">Create one</a></p>
+  </div>
+  <p class="disclaimer">Training application for QA automation. Not a real bank — never enter real data.</p>
+</main>
+<script src="/app.js"></script>
+<script>
+  const params = new URLSearchParams(location.search);
+  const info = document.querySelector("[data-testid=login-info]");
+  if (params.has("registered")) show(info, "Registration successful. Please sign in.");
+  if (params.has("logged_out")) show(info, "You have been signed out.");
+  if (params.has("expired")) show(info, "Your session has expired. Please sign in again.");
+
+  const form = document.querySelector("[data-testid=login-form]");
+  const error = document.querySelector("[data-testid=login-error]");
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    hide(error);
+    const email = form.email.value.trim();
+    const password = form.password.value;
+    if (!email || !password) return show(error, "Please enter email and password.");
+    const button = form.querySelector("button");
+    button.disabled = true;
+    try {
+      const data = await api("/api/auth/login", { method: "POST", body: { email, password } });
+      session.set(data.access_token);
+      location.assign("/dashboard.html");
+    } catch (err) {
+      show(error, err.status === 401 ? "Invalid email or password." : errorMessage(err));
+    } finally {
+      button.disabled = false;
+    }
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,58 @@
+[project]
+name = "finguard-qa-automation"
+version = "1.0.0"
+description = "Training banking API + web UI, and the API/UI automated test suites that verify them."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "sqlalchemy>=2.0",
+    "psycopg[binary]>=3.2",
+    "alembic>=1.13",
+    "pydantic[email]>=2.7",
+    "pydantic-settings>=2.3",
+    "pyjwt>=2.8",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=8.2",
+    "httpx>=0.27",
+    "pytest-playwright>=0.5",
+    "pytest-html>=4.1",
+    "pytest-timeout>=2.3",
+    "ruff>=0.6",
+]
+
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers --timeout=120 --screenshot=only-on-failure --tracing=retain-on-failure --output=reports/playwright"
+markers = [
+    "smoke: fast critical-path checks",
+    "functional: happy-path business scenarios",
+    "negative: invalid input, auth and permission errors",
+    "boundary: limits of allowed values",
+    "db: assertions made directly against PostgreSQL",
+    "concurrency: parallel requests",
+    "contract: HTTP status codes and JSON response structure",
+    "ui: Playwright browser tests",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+extend-exclude = [".venv", "*.md"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "PT", "SIM"]
+
+[tool.ruff.lint.per-file-ignores]
+"alembic/**" = ["I"]

@@ -1,0 +1,85 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Ruff
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install "ruff>=0.6"
+      - run: ruff check .
+      - run: ruff format --check .
+
+  tests:
+    name: API + UI tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: finguard_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      TEST_DATABASE_URL: postgresql+psycopg://postgres:postgres@127.0.0.1:5432/finguard_test
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@127.0.0.1:5432/finguard_test
+      # A throwaway secret for the CI test server only; it protects nothing real.
+      JWT_SECRET: ci-only-throwaway-secret-0123456789abcdef
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -e ".[test]"
+
+      - name: Install Playwright browser
+        run: python -m playwright install --with-deps chromium
+
+      - name: Apply database migrations
+        run: alembic upgrade head
+
+      - name: API tests
+        run: >-
+          pytest tests/api
+          --junitxml=reports/api-junit.xml
+          --html=reports/api-report.html --self-contained-html
+
+      - name: UI tests
+        # Run UI tests even if API tests failed, so both results are visible.
+        if: success() || failure()
+        run: >-
+          pytest tests/ui
+          --junitxml=reports/ui-junit.xml
+          --html=reports/ui-report.html --self-contained-html
+
+      - name: Upload reports, server log, screenshots and traces
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: reports/
+          retention-days: 14

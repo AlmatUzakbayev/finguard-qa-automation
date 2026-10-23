@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Accounts · FinGuard</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header>
+  <span class="brand">FinGuard</span>
+  <nav>
+    <a href="/dashboard.html" data-testid="nav-dashboard">Dashboard</a>
+    <a href="/accounts.html" data-testid="nav-accounts" aria-current="page">Accounts</a>
+    <a href="/transfer.html" data-testid="nav-transfer">Transfer</a>
+    <a href="/history.html" data-testid="nav-history">History</a>
+  </nav>
+  <span data-testid="current-user"></span>
+  <button class="secondary" data-testid="logout-button">Sign out</button>
+</header>
+<main>
+  <div class="card">
+    <h1>Accounts</h1>
+    <table data-testid="accounts-table">
+      <thead><tr><th>Account</th><th>Currency</th><th class="money">Balance</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+  <div class="card">
+    <h2>Open a new account</h2>
+    <form data-testid="open-account-form">
+      <label for="currency">Currency</label>
+      <select id="currency" name="currency" data-testid="currency-select">
+        <option>KZT</option><option>USD</option><option>EUR</option>
+      </select>
+      <button type="submit" data-testid="open-account-button">Open account</button>
+    </form>
+  </div>
+  <div class="card">
+    <h2>Top up (training only)</h2>
+    <form data-testid="deposit-form" novalidate>
+      <label for="deposit-account">Account</label>
+      <select id="deposit-account" name="account" data-testid="deposit-account-select"></select>
+      <label for="deposit-amount">Amount</label>
+      <input id="deposit-amount" name="amount" inputmode="decimal" data-testid="deposit-amount-input">
+      <button type="submit" data-testid="deposit-button">Top up</button>
+    </form>
+  </div>
+  <div class="alert success" role="status" data-testid="accounts-success" hidden></div>
+  <div class="alert error" role="alert" data-testid="accounts-error" hidden></div>
+  <p class="disclaimer">Training application for QA automation. Not a real bank — never enter real data.</p>
+</main>
+<script src="/app.js"></script>
+<script>
+  const success = document.querySelector("[data-testid=accounts-success]");
+  const error = document.querySelector("[data-testid=accounts-error]");
+
+  async function render() {
+    const accounts = await loadAccounts();
+    renderAccountRows(document.querySelector("[data-testid=accounts-table] tbody"), accounts);
+    fillAccountSelect(document.querySelector("[data-testid=deposit-account-select]"), accounts);
+  }
+
+  async function submit(action) {
+    hide(success);
+    hide(error);
+    try {
+      const message = await action();
+      await render();
+      show(success, message);
+    } catch (err) {
+      show(error, errorMessage(err));
+    }
+  }
+
+  document.querySelector("[data-testid=open-account-form]").addEventListener("submit", (event) => {
+    event.preventDefault();
+    submit(async () => {
+      const a = await api("/api/accounts", { method: "POST", body: { currency: event.target.currency.value } });
+      return `Account #${a.id} (${a.currency}) opened.`;
+    });
+  });
+
+  document.querySelector("[data-testid=deposit-form]").addEventListener("submit", (event) => {
+    event.preventDefault();
+    const form = event.target;
+    submit(async () => {
+      const amount = form.amount.value.trim();
+      const a = await api(`/api/accounts/${form.account.value}/deposit`, { method: "POST", body: { amount } });
+      form.amount.value = "";
+      return `Account #${a.id} balance: ${formatMoney(a.balance, a.currency)}.`;
+    });
+  });
+
+  requireAuth().then(render);
+</script>
+</body>
+</html>
