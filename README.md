@@ -1,5 +1,7 @@
 # FinGuard QA Automation Suite
 
+[![CI](https://github.com/AlmatUzakbayev/finguard-qa-automation/actions/workflows/ci.yml/badge.svg)](https://github.com/AlmatUzakbayev/finguard-qa-automation/actions/workflows/ci.yml)
+
 Automated API and UI testing of a small banking service — written in Python with
 **pytest, httpx, Playwright, PostgreSQL and GitHub Actions**.
 
