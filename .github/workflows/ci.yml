@@ -146,7 +146,7 @@ jobs:
   allure:
     name: Publish Allure report
     needs: tests
-    if: always() && github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: always() && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     # Publishing needs GitHub Pages (Settings -> Pages -> Source: GitHub Actions);
     # until it is enabled this job must not turn the whole pipeline red.
     continue-on-error: true
