@@ -65,6 +65,7 @@ jobs:
       - name: API tests
         run: >-
           pytest tests/api
+          --alluredir=reports/allure-results
           --junitxml=reports/api-junit.xml
           --html=reports/api-report.html --self-contained-html
 
@@ -73,6 +74,7 @@ jobs:
         if: success() || failure()
         run: >-
           pytest tests/ui
+          --alluredir=reports/allure-results
           --junitxml=reports/ui-junit.xml
           --html=reports/ui-report.html --self-contained-html
 
@@ -83,3 +85,97 @@ jobs:
           name: test-reports
           path: reports/
           retention-days: 14
+
+  load:
+    name: Load test (Locust, SLA p95 < 500 ms)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: finguard_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@127.0.0.1:5432/finguard_test
+      JWT_SECRET: ci-only-throwaway-secret-0123456789abcdef
+      PASSWORD_HASH_ITERATIONS: "1000"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -e ".[load]"
+
+      - name: Apply database migrations
+        run: alembic upgrade head
+
+      - name: Start the API server
+        run: |
+          mkdir -p reports
+          nohup uvicorn app.main:app --host 127.0.0.1 --port 8000 > reports/load-server.log 2>&1 &
+          for i in $(seq 1 30); do curl -sf http://127.0.0.1:8000/health && exit 0; sleep 1; done
+          echo "Server did not start"; cat reports/load-server.log; exit 1
+
+      - name: Run Locust (20 users, 30 s)
+        run: >-
+          locust -f tests/load/locustfile.py --host http://127.0.0.1:8000
+          --headless --users 20 --spawn-rate 5 --run-time 30s --only-summary
+          --html reports/load-report.html --csv reports/load
+
+      - name: Upload load test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: load-report
+          path: reports/
+          retention-days: 14
+
+  allure:
+    name: Publish Allure report
+    needs: tests
+    if: always() && github.ref == 'refs/heads/main' && github.event_name == 'push'
+    # Publishing needs GitHub Pages (Settings -> Pages -> Source: GitHub Actions);
+    # until it is enabled this job must not turn the whole pipeline red.
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: test-reports
+          path: reports
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Build the Allure report
+        run: |
+          npm install -g allure-commandline@2.30.0
+          allure generate reports/allure-results --clean -o site
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - id: deploy
+        uses: actions/deploy-pages@v4
