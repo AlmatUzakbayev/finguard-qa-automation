@@ -65,6 +65,8 @@ class FinGuardApi:
         description: str | None = None,
     ) -> httpx.Response:
         """POST /api/transfers. A fresh Idempotency-Key is generated unless one is given."""
+        if isinstance(amount, Decimal):
+            amount = str(amount)
         body: dict = {"from_account_id": from_id, "to_account_id": to_id, "amount": amount}
         if description is not None:
             body["description"] = description
