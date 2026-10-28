@@ -1,6 +1,7 @@
 # FinGuard QA Automation Suite
 
 [![CI](https://github.com/AlmatUzakbayev/finguard-qa-automation/actions/workflows/ci.yml/badge.svg)](https://github.com/AlmatUzakbayev/finguard-qa-automation/actions/workflows/ci.yml)
+[![Allure report](https://img.shields.io/badge/Allure-report-orange)](https://almatuzakbayev.github.io/finguard-qa-automation/)
 
 Automated API and UI testing of a small banking service — written in Python with
 **pytest, httpx, Playwright, PostgreSQL and GitHub Actions**.
@@ -15,6 +16,8 @@ Automated API and UI testing of a small banking service — written in Python wi
 |---|---|
 | **Project A — Banking API Automation** (main) | 43 test functions / **90 test cases**: functional, negative, boundary, database, idempotency, concurrency, contract |
 | **Project B — Web UI Automation** | 10 test functions / **17 test cases** with Playwright + Page Object Model |
+| **Property-based testing** | Hypothesis fuzzes the amount field (150 generated inputs) and runs random sequences of deposits, transfers and retries against an in-memory model of the bank |
+| **Load testing** | Locust scenario in CI: 20 concurrent customers, the build fails on any error or p95 > 500 ms |
 | **Bug found and fixed** | [BUG-001](docs/known_issues.md#bug-001--account-id-outside-the-integer-range-causes-http-500): HTTP 500 on out-of-range account ids — found by exploratory testing, reproduced by a failing test, fixed, kept as a regression test |
 | **Tests verified to catch bugs** | 20 deliberately injected bugs (race condition, missing ownership check, off-by-one, non-atomic transfer…): 19 caught, 1 explained — see [Mutation check](#how-do-we-know-the-tests-work) |
 | **Documentation** | [Test strategy](docs/test_strategy.md) · [Test plan](docs/test_plan.md) · [Test cases](docs/test_cases.md) · [Test report](docs/test_report.md) · [Known issues](docs/known_issues.md) |
@@ -59,6 +62,8 @@ Interactive API docs: `http://localhost:8000/docs` once the app is running.
 | Database | Exact stored values, no rows after a failed transfer, **atomicity under an injected crash**, CHECK constraints, ledger reconciliation | `tests/api/test_database.py` |
 | Idempotency & concurrency | Replay of the same key, conflicting key, 10 parallel retries → one debit, 10 parallel transfers → no overdraft, A→B / B→A → no deadlock | `tests/api/test_idempotency_and_concurrency.py` |
 | Contract | Strict JSON schemas for every response, uniform error format, HTTP status codes | `tests/api/test_contract.py` |
+| Property-based | Any JSON value as an amount → never HTTP 500, never an out-of-rule amount accepted; random operation sequences → API = model, DB balance = ledger, no money created or lost | `tests/api/test_property_based.py` |
+| Load | Balance, history and transfers under 20 concurrent users with SLA thresholds | `tests/load/locustfile.py` |
 | UI | Login, wrong password, protected pages, logout, balances, open account + top up, transfer, form validation errors, double-click, history | `tests/ui/` |
 
 Concurrency tests are **deterministic**: all threads start together on a `threading.Barrier`, and the
@@ -78,9 +83,9 @@ Last local run — 2026-10-23, Windows 10, Python 3.14, PostgreSQL 16.4, Chromiu
 
 Details, including the first run where the BUG-001 tests failed, are in [docs/test_report.md](docs/test_report.md).
 
-**CI status:** the GitHub Actions workflow ([.github/workflows/ci.yml](.github/workflows/ci.yml)) is written
-but **has not run yet** — it runs on the first push to GitHub. Docker Compose was also not executed on the
-development machine (Docker is not installed there); the tests ran against a locally installed PostgreSQL.
+**CI:** the GitHub Actions workflow ([.github/workflows/ci.yml](.github/workflows/ci.yml)) runs lint, API + UI
+tests, the load test and publishes an Allure report on every push to `main`. Docker Compose was not executed on
+the development machine (Docker is not installed there); local runs use a locally installed PostgreSQL.
 
 ## How do we know the tests work?
 
@@ -100,6 +105,34 @@ and the relevant tests were run against each of them. Examples:
 The one surviving mutant (the UI "Send" button no longer disabled during the request) is covered by a second
 safeguard — the form's idempotency key — so the user is still charged once. Removing both safeguards makes the
 test fail. Full table: [docs/test_report.md](docs/test_report.md#mutation-check).
+
+## Property-based and load testing
+
+Example-based tests check the cases someone thought of. The property-based tests in
+[`test_property_based.py`](tests/api/test_property_based.py) let Hypothesis invent the cases:
+
+- **Fuzzing** — 150 generated values for `amount` (NaN, infinity, huge integers, floats, strings, `null`, lists…).
+  Property: the API answers `200` or `422 VALIDATION_ERROR`, never `500`, and an accepted amount always satisfies
+  the business rule (0.01 … 1 000 000.00, two decimals).
+- **Stateful model-based test** — a `RuleBasedStateMachine` performs random deposits, transfers and retried
+  transfers. After every step it checks that API balances equal an in-memory model, that each DB balance equals its
+  ledger, and that the total of all balances equals the total deposited.
+
+The stateful test was itself checked with an injected bug (the receiver credited twice for transfers above 1000).
+Its first version missed it: random amounts almost never produced a large successful transfer. After drawing
+amounts as a share of the current balance, Hypothesis caught the bug and shrank it to a three-step reproduction:
+
+```
+state.deposit(amount=Decimal('1759.83'), index=0)
+state.retried_transfer_is_charged_once(percent=57)
+state.api_balances_match_the_model()   ->  Decimal('2006.20') != Decimal('1003.10')
+```
+
+The [Locust scenario](tests/load/locustfile.py) simulates customers who check balances, read history and transfer
+money. Registration is excluded from the service level because password hashing is slow by design. The run exits
+with code 1 when a business endpoint has a failed request or a p95 above `P95_LIMIT_MS` (500 ms in CI); this was
+verified by running it with an impossible 1 ms limit. A local run of 20 users for 30 s: 910 requests, 0 failures,
+p95 95–150 ms.
 
 ## Run it yourself
 
@@ -123,6 +156,7 @@ pytest tests/ui                      # UI tests (headless Chromium)
 pytest tests/ui --headed --slowmo 500  # watch the browser
 pytest -m "smoke"                    # only the critical path
 pytest -m "concurrency or db"        # by category (see markers in pyproject.toml)
+pytest -m property                   # property-based tests (Hypothesis)
 
 # 4. Reports
 pytest tests --html=reports/report.html --self-contained-html --junitxml=reports/junit.xml
@@ -131,6 +165,14 @@ pytest tests --html=reports/report.html --self-contained-html --junitxml=reports
 
 # 5. Lint
 ruff check . && ruff format --check .
+
+# 6. Load test against a running server (see "Run the application manually" below)
+pip install -e ".[load]"
+locust -f tests/load/locustfile.py --host http://127.0.0.1:8000 --headless --users 20 --spawn-rate 5 --run-time 30s
+
+# 7. Allure report
+pytest tests --alluredir=reports/allure-results
+allure serve reports/allure-results  # needs the Allure CLI
 ```
 
 Run the application manually:
@@ -158,7 +200,8 @@ frontend/             minimal web UI (HTML + vanilla JS, no build step)
 tests/
   conftest.py         starts DB migrations + server, user/account factories
   support/            API client, DB inspector, contract schemas, assertions
-  api/                Project A — API tests
+  api/                Project A — API tests (incl. property-based)
+  load/               Locust load test with SLA thresholds
   ui/                 Project B — Playwright tests + page objects
 docs/                 test strategy, plan, cases, report, known issues
 learning/             study materials in Russian (for the author)
@@ -169,7 +212,7 @@ docker-compose.yml    PostgreSQL + app for local runs
 ## Known limitations
 
 See [docs/known_issues.md](docs/known_issues.md): no token revocation on logout, the deposit endpoint is a
-training shortcut, Chromium only, CI not yet executed, and more.
+training shortcut, Chromium only, and more.
 
 ## About
 

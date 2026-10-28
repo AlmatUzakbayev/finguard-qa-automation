@@ -106,11 +106,11 @@ Details: [known_issues.md](known_issues.md).
 
 ## 6. Not verified / open items
 
-1. **GitHub Actions** workflow has not run yet. It must be checked after the first push.
+1. ~~GitHub Actions workflow has not run yet.~~ Verified on 2026-10-28: the first run on GitHub passed
+   (lint, API and UI tests on Python 3.12), which also closes the Python 3.12 question below.
 2. **Docker Compose** (`docker compose up`) has not been run.
 3. UI tests ran only in **Chromium**.
-4. Tests ran on **Python 3.14**; CI is configured for **Python 3.12** (the code uses no 3.13+ features,
-   but this is unverified until CI runs).
+4. ~~Tests ran on Python 3.14; CI is configured for Python 3.12.~~ Verified by the CI run above.
 
 ## 7. Conclusion
 
